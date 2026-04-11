@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "690460723347",
+    "project_id": "tta-scheduler-74aaa",
+    "storage_bucket": "tta-scheduler-74aaa.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:690460723347:android:7a0e6317b8cf1af80ba566",
+        "android_client_info": {
+          "package_name": "com.ttascheduler.tta_scheduler"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAVGsfEETml3J0l_A161WzO09--FQV-_u8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
