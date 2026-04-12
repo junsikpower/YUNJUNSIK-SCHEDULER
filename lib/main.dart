@@ -74,6 +74,10 @@ class _MainShellState extends State<MainShell> with WindowListener, TrayListener
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      NotificationService.requestPermissionsOnAppStart();
+    });
+
     if (Platform.isWindows) {
       windowManager.addListener(this);
       _initSystemTray();

@@ -176,10 +176,10 @@ class _AlarmCenterScreenState extends State<AlarmCenterScreen> {
 
   List<_AlarmItem> _buildAlarmItems(List<DayPlan> dayPlans) {
     final alarms = <_AlarmItem>[];
-    final activePlan = ScheduleParser.pickActivePlan(dayPlans);
+    final now = DateTime.now();
+    final activePlan = ScheduleParser.pickActivePlan(dayPlans, now: now);
     if (activePlan == null) return alarms;
 
-    final now = DateTime.now();
     final baseDate = ScheduleParser.resolvePlanDate(activePlan.dateLabel, now);
     int notificationId = 0;
 

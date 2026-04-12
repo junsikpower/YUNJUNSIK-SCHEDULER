@@ -172,6 +172,11 @@ class ScheduleParser {
     int hour = int.tryParse(match.group(1) ?? '') ?? -1;
     int minute = int.tryParse(match.group(2) ?? '0') ?? 0;
 
+    // 24시/24:xx 입력은 다음 날 00시/00:xx로 자동 정규화합니다.
+    if (hour == 24) {
+      hour = 0;
+    }
+
     if (hour < 0 || hour > 23) return null;
 
     // 오후 처리 (오후 3시 = 15시)
@@ -196,10 +201,56 @@ class ScheduleParser {
     return hasNumber && hasDateKeyword && _dateLine.hasMatch(line);
   }
 
-  /// 마지막으로 작성된 날짜 섹션(제목)만 활성 계획으로 사용
-  static DayPlan? pickActivePlan(List<DayPlan> dayPlans) {
+  /// 현재 시각 기준으로 활성 날짜 섹션을 선택
+  /// 규칙: 다음 날짜의 첫 일정 시작 30분 전부터 다음 날짜로 전환
+  static DayPlan? pickActivePlan(List<DayPlan> dayPlans, {DateTime? now}) {
     if (dayPlans.isEmpty) return null;
-    return dayPlans.last;
+
+    final nowTime = now ?? DateTime.now();
+    DayPlan active = dayPlans.first;
+
+    for (int i = 1; i < dayPlans.length; i++) {
+      final nextPlan = dayPlans[i];
+      final switchTime = _resolveSwitchTime(nextPlan, nowTime);
+
+      if (nowTime.isBefore(switchTime)) {
+        break;
+      }
+      active = nextPlan;
+    }
+
+    return active;
+  }
+
+  static DateTime _resolveSwitchTime(DayPlan plan, DateTime fallback) {
+    final firstStart = _resolveFirstStartTime(plan, fallback);
+    if (firstStart != null) {
+      return firstStart.subtract(const Duration(minutes: 30));
+    }
+
+    final baseDate = resolvePlanDate(plan.dateLabel, fallback);
+    return DateTime(baseDate.year, baseDate.month, baseDate.day);
+  }
+
+  static DateTime? _resolveFirstStartTime(DayPlan plan, DateTime fallback) {
+    final baseDate = resolvePlanDate(plan.dateLabel, fallback);
+    DateTime? first;
+
+    for (final block in plan.blocks) {
+      if (block.startTime == null) continue;
+      final candidate = DateTime(
+        baseDate.year,
+        baseDate.month,
+        baseDate.day,
+        block.startTime!.hour,
+        block.startTime!.minute,
+      );
+      if (first == null || candidate.isBefore(first)) {
+        first = candidate;
+      }
+    }
+
+    return first;
   }
 
   /// dateLabel 문자열을 실제 날짜로 변환

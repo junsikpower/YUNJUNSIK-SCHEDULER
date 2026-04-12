@@ -196,6 +196,45 @@ class NotificationService {
     }
   }
 
+  /// 앱 UI가 올라온 직후 호출하여 권한 팝업이 확실히 뜨도록 보강
+  static Future<void> requestPermissionsOnAppStart() async {
+    if (!Platform.isAndroid) return;
+
+    final androidPlugin = _localNotificationsPlugin
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin == null) return;
+
+    try {
+      final enabledBefore = await androidPlugin.areNotificationsEnabled();
+      _log('앱 시작 후 권한 재확인(요청 전): $enabledBefore');
+
+      if (enabledBefore != true) {
+        final notifRequestResult =
+            await androidPlugin.requestNotificationsPermission();
+        _log('앱 시작 후 알림 권한 요청 결과: $notifRequestResult');
+      }
+
+      final exactAllowedBefore =
+          await androidPlugin.canScheduleExactNotifications();
+      _log('앱 시작 후 Exact Alarm 상태(요청 전): $exactAllowedBefore');
+      if (exactAllowedBefore != true) {
+        final exactRequestResult =
+            await androidPlugin.requestExactAlarmsPermission();
+        _log('앱 시작 후 Exact Alarm 권한 요청 결과: $exactRequestResult');
+      }
+
+      _androidNotificationPermission =
+          await androidPlugin.areNotificationsEnabled();
+      _androidExactAlarmAllowed =
+          await androidPlugin.canScheduleExactNotifications();
+    } catch (e) {
+      _log('앱 시작 후 권한 요청 실패: $e');
+    }
+
+    await refreshDiagnostics();
+  }
+
   /// 새로운 파싱 데이터가 들어오면 모든 알림을 재설정
   static Future<void> scheduleAlarms(List<DayPlan> dayPlans) async {
     _requestedCount = 0;
@@ -217,13 +256,13 @@ class NotificationService {
 
     await clearLegacyTestAlarm();
 
-    final activePlan = ScheduleParser.pickActivePlan(dayPlans);
+    final today = DateTime.now();
+    final activePlan = ScheduleParser.pickActivePlan(dayPlans, now: today);
     if (activePlan == null) {
       await refreshDiagnostics();
       return;
     }
 
-    final today = DateTime.now();
     final baseDate = ScheduleParser.resolvePlanDate(activePlan.dateLabel, today);
     int notificationId = 0;
 
@@ -245,11 +284,12 @@ class NotificationService {
 
     final digestTime = firstStart?.subtract(const Duration(minutes: 30));
     if (digestTime != null && digestTime.isAfter(today)) {
+      final digestBody = _buildDigestBody(activePlan);
       final ok = await _scheduleExactTime(
         id: notificationId++,
         time: digestTime,
         title: '💕 오늘 하루 브리핑',
-        body: '상쾌한 하루의 시작! 오늘의 일정을 에디터에서 확인해보세요.',
+        body: digestBody,
       );
       _requestedCount++;
       if (ok) {
@@ -346,6 +386,38 @@ class NotificationService {
 
     await refreshDiagnostics();
     _publishDiagnostics();
+  }
+
+  static String _buildDigestBody(DayPlan plan) {
+    final lines = <String>[];
+
+    for (final block in plan.blocks) {
+      final raw = block.rawText.trim();
+      if (raw.isNotEmpty) {
+        lines.add(raw);
+      }
+    }
+
+    if (plan.memos.isNotEmpty) {
+      lines.add('[메모]');
+      for (final memo in plan.memos) {
+        final normalized = memo.trim();
+        if (normalized.isNotEmpty) {
+          lines.add(normalized);
+        }
+      }
+    }
+
+    if (lines.isEmpty) {
+      return '오늘 등록된 일정이 없습니다.';
+    }
+
+    const maxLength = 450;
+    final full = lines.join('\n');
+    if (full.length <= maxLength) {
+      return full;
+    }
+    return '${full.substring(0, maxLength)}\n...(이하 생략)';
   }
 
   /// 실제 시스템 알림 등록 + 인앱 타이머 등록
@@ -463,7 +535,7 @@ class NotificationService {
       title,
       body,
       tz.TZDateTime.from(time, tz.local),
-      const NotificationDetails(
+      NotificationDetails(
         android: AndroidNotificationDetails(
           _channelId,
           _channelName,
@@ -473,6 +545,7 @@ class NotificationService {
           icon: '@mipmap/launcher_icon',
           playSound: true,
           enableVibration: true,
+          styleInformation: BigTextStyleInformation(body),
         ),
       ),
       androidScheduleMode: mode,
